@@ -1,0 +1,680 @@
+#include <iostream>
+#include <sstream>
+#include <vector>
+#include <string>
+#include <math.h> 
+
+using namespace std;
+/* Rohail Kidwai
+My solution uses what I call critical levels and Ro critical points, yeah I kinda named it after myself even though I'm pretty sure something
+like this already exists but I was really happy with the fact that I discovered this by myself and it seems to work for the cases I tested so hopefully
+it works. 
+Anyways here are the definitions:
+
+Critical level: Level (height in tree) where there exists a node which has leaves of different parity.
+Ro Critical Point: node with the highest critical level of a given parity.
+
+Now for how these are used:
+The critical level is important because this is the point where there can possibly be a key decision and depending on the parity of the critical level
+it is either in favor of the first player, odd or second player, even. This is simply because if it's odd we know the first player is making a move at
+this point and otherwise if even. So based on this we define the Ro critical point as nodes of the highest critical level (closer to the top) since 
+this will be the move that matters the most for each respective parity. But that's not enoough what do we do with these points? 
+We calculate the expected value so we can compare which has a higher chance of winning. Let's consider an example:
+
+consider we are given: 3 7 2
+My code forms a binary tree from each integer, where we consider the move by the first player as the root, thus why evens are second player and odds first
+so we get the following trees: (height starts at zero)
+             3(472)                                                 7(322)                              2(375)                    
+	       /         \                                               /                               /         \
+     7(432)            2(475)                                     3(222)                       3(675)          7(345)
+	/     \               /   \                                    /                            / \              / \
+  4(232) 2(433)       4(675)    7(445)                         lose(f)				        7(655) 5(676)    3(445)  5(343)
+  /         \           /   \      \                           Height2                       /      \          /      \
+3(222)    4(333)     7(655) 5(676)  5(444)                                               6(555)    7(666)   5(444)    4(333)
+ /          \          /    \        \                                                     /        \         /          \
+Lose(f)   lose(f)   6(555)   7(666)   lose(f)                                         lose(f)      lose(f)  lose(f)     lose(f)
+ Height4  Height4    /       \        Height4                                         Height4      Height4  Height4     Height4
+                   Lose(s)   lose(s)
+				   Height5   Height5
+
+The number outside the parentheses is the number that is picked and the 3 numbers inside are the what the values are and lose(f) and lose(s) mean that the 
+first player loses or the second player loses repectively. Note here that there is a correspondance between the parity height and who loses, (critical levels).
+So lets look at the trees of root 7 and and of root 2 here we notice there are no critical levels and thus no Ro Critical Points, However, trees such as these 
+already have determined the winner or loser and that is simply the parity of the height of the tree since we can consider the root itself as the only point 
+where a key decision was made so for trees such as these it simply comes down the the parity of the height of the tree.
+
+Now lets look at the real case, a tree such as 3. Here we will notice that there there are two critical levels. In height 0 and height 1, there exist nodes
+that have leaves of different parity and in this case since there are only two critical levels of different parities these two are also the Ro critical points
+since those are no doubt the highest critical levels. Now how do we determine who will win? We store the nodes in these Ro Critical Points and we calculate the
+expected value of odd winning or even winning depending on the parity of the Ro Critical Points. the expected value is calculated by this:
+Expected value of O/E = sum over all nodes in level((1/(2^critical level)) * ((numberof O/E parity leaves)/total number of leaves))
+The 1/2^critical level acts as the random variabe since the higher up the tree the more important the move and the probability is simpley the chance of gettting
+to a O/E parity leaf. Finally we pick the higher expected value. So in the example the Ro critical points are for odd 7(432), and 2(475); for even 3(472) 
+Now we calculate the expected value of each level:
+Odd = (1/2)*0 +(1/2)*(2/3) = 1/3
+Even = (1)*(3/5) = 3/5 
+Since 3/5 > 1/3 we pick first
+*/
+//struct for storing the inputs 
+typedef struct numbers_
+{
+	int x;
+	int y;
+	int z;
+}numbers;
+
+//standard node to store info needed
+struct node
+{
+	int pick;
+	int x, y, z;
+	node *left;
+	node *right;
+};
+
+//standard binary tree class
+class btree
+{
+public:
+	btree();
+	~btree();
+
+	void create(int pick, int x, int y, int z);
+	void destroy_tree();
+	void generate(node* leaf);
+	//void printLevelOrder(node* root);      ///this was a good debuging code
+	node *root;
+private:
+	void destroy_helper(node* leaf);
+	void insert(node* leaf);
+	int pickMe(int x, int y, int z);
+	void replaceMe(node* leaf, int x, int y, int z);
+
+};
+
+
+btree::btree()
+{
+	root = NULL;
+}
+
+
+btree::~btree()
+{
+	destroy_tree();
+}
+
+
+void btree::destroy_helper(node *leaf)
+{
+	if (leaf != NULL)
+	{
+		destroy_helper(leaf->left);
+		destroy_helper(leaf->right);
+		delete leaf;
+	}
+}
+
+///this decides if we can make a legal move. A legal move being not picking something that doesn't change the game.
+int btree::pickMe(int x, int y, int z)
+{
+	if (x != (y + z) / 2)
+		return x;
+	else if (y != (x + z) / 2)
+		return y;
+	else if (z != (x + y) / 2)
+		return z;
+	else
+		return 0;
+}
+
+/* this actually replaces the node after pickMe does it's thing and updates the given node with new average taken*/
+void btree::replaceMe(node* leaf, int x, int y, int z)
+{
+	if (leaf->pick == x)
+	{
+		leaf->x = (y + z) / 2;
+		leaf->y = y;
+		leaf->z = z;
+	}
+	else if (leaf->pick == y)
+	{
+		leaf->y = (x + z) / 2;
+		leaf->x = x;
+		leaf->z = z;
+	}
+	else if (leaf->pick == z)
+	{
+		leaf->z = (y + x) / 2;
+		leaf->y = y;
+		leaf->x = x;
+	}
+	else
+	{
+		//cout << "There is an error with replaceMe code logic!! \n";
+	}
+}
+
+/*Originally started off as a recurstion but then I decided generate would be easier to manage so this is just here to serve
+as the insert node here if possible code*/
+void btree::insert(node* leaf)
+{
+	if (leaf->left == NULL)
+	{
+		leaf->left = new node;
+		leaf->left->pick = pickMe(leaf->x, leaf->y, leaf->z);
+		if (leaf->left->pick != 0)
+			replaceMe(leaf->left, leaf->x, leaf->y, leaf->z);
+		else
+		{
+			leaf->left->x = leaf->x;
+			leaf->left->y = leaf->y;
+			leaf->left->z = leaf->z;
+		}
+		leaf->left->left = NULL;    //Sets the left child of the child node to null
+		leaf->left->right = NULL;   //Sets the right child of the child node to null
+	}
+	if (leaf->right == NULL)
+	{
+		leaf->right = new node;
+		leaf->right->pick = pickMe(leaf->x, leaf->y, leaf->z);
+		if (leaf->right->pick == leaf->left->pick)
+			leaf->right->pick = pickMe(leaf->y, leaf->z, leaf->x);
+		if (leaf->right->pick == leaf->left->pick)
+			leaf->right->pick = pickMe(leaf->z, leaf->x, leaf->y);          ////since the left node is always created first need to make sure
+		if (leaf->right->pick == leaf->left->pick)                          ////////there are no repeats
+		{
+			delete leaf->right;
+			leaf->right = NULL;
+			return;
+		}
+		
+		if (leaf->right->pick != 0)
+			replaceMe(leaf->right, leaf->x, leaf->y, leaf->z);
+		else
+		{
+			leaf->left->x = leaf->x;
+			leaf->left->y = leaf->y;
+			leaf->left->z = leaf->z;
+		}
+		leaf->right->left = NULL;  //Sets the left child of the child node to null
+		leaf->right->right = NULL; //Sets the right child of the child node to null
+	}
+}
+
+void btree::create(int pick, int x, int y, int z)
+{
+	if (root == NULL)
+	{
+		root = new node;
+		root->pick = pick;
+		/// we want to make sure first if the chosen root is actually valid.
+		if (pick == x)
+		{
+			if ((z + y) / 2 == x)
+			{
+				//cout << (z + y) / 2 << "\n";
+				root->pick = 0;
+				root->x = x;
+				root->y = y;
+				root->z = z;
+			}
+
+		}
+		else if (pick == y)
+		{
+			if ((z + x) / 2 == y)
+			{
+				//cout << (z + y) / 2 << "\n";
+				root->pick = 0;
+				root->x = x;
+				root->y = y;
+				root->z = z;
+			}
+
+		}
+		else if (pick == z)
+		{
+			if ((x + y) / 2 == z)
+			{
+				root->pick = 0;
+				root->x = x;
+				root->y = y;
+				root->z = z;
+			}
+		}
+		if (root->pick != 0)
+			replaceMe(root, x, y, z);
+		root->left = NULL;
+		root->right = NULL;
+
+	}
+	else
+	{
+		//cout << "ROOT NOT NULL!" << endl;
+	}
+}
+
+void btree::destroy_tree()
+{
+	destroy_helper(root);
+}
+/*recursion that actually creates the tree*/
+void btree::generate(node* leaf)
+{
+	if (leaf->pick == 0)  //base case
+	{
+		//cout << "finished \n";
+		return;
+	}
+	else
+	{
+		insert(leaf);
+		if (leaf->left != NULL)
+			generate(leaf->left);
+		if (leaf->right != NULL)
+			generate(leaf->right);
+	}
+
+}
+
+//standard get tree height
+int nodeHeightMax(node *leaf)
+{
+	if (leaf == NULL)
+	{
+		return 0;
+	}
+
+	int left = nodeHeightMax(leaf->left);
+	int right = nodeHeightMax(leaf->right);
+
+	return 1 + fmax(left, right);
+}
+
+//Also need this to detect a change in parity of a given nodes' leaves
+int nodeHeightMin(node *leaf)
+{
+	if (leaf == NULL)
+	{
+		return 0;
+	}
+
+	int left = nodeHeightMax(leaf->left);
+	int right = nodeHeightMax(leaf->right);
+
+	return 1 + fmin(left, right);
+}
+
+/* Function that finds the critical levels, simple recursion actaully */
+void theLearndAstronomer(node* leaf, int* criticalLevels, bool* lineRoot, int* index, int l)
+{
+	if (leaf == NULL)
+	{
+		return;
+	}
+	theLearndAstronomer(leaf->left, criticalLevels, lineRoot, index, l + 1);
+
+	if (leaf->left != NULL && leaf->right != NULL)
+	{
+		if (((l + nodeHeightMax(leaf->left) - 1) % 2 != (l + nodeHeightMax(leaf->right) - 1) % 2) || ((l + nodeHeightMin(leaf->left) - 1) % 2 != (l + nodeHeightMin(leaf->right) - 1) % 2))
+		{
+			//This is a critical level 
+			criticalLevels[*index] = l;
+			(*index)++;
+			//cout << "current critical xindex = " << *index - 1 << " found at level = " << l << " = " <<  criticalLevels[*index - 1] << endl;
+		}
+	}
+	else if ( leaf->left == NULL || leaf->right == NULL)
+	{
+		if (l == 0) // the root only has one branch or none
+		{
+			//cout << "LINEROOT TRUE \n";
+			*lineRoot = true;
+			return;
+		}
+	}
+
+	theLearndAstronomer(leaf->right, criticalLevels, lineRoot, index, l + 1);
+}
+
+/*Called by probability function calculates the number of odd and even leaves of a node*/
+void getLeaves(node* leaf, float* odd, float* even, int l)
+{
+	// Base case
+	if (leaf == NULL) return;
+
+	// Store elements of left subtree
+	getLeaves(leaf->left, odd, even, l + 1);
+
+	// Store this root node depending on its parity
+	if (l % 2 != 0 && leaf->pick == 0)
+	{
+		(*odd)++;
+	}
+	else if (l % 2 == 0 && leaf->pick == 0)      // Can include an empty root but that's ok it prevents zero division
+	{
+		(*even)++;
+	}
+
+	// Store elements of right subtree
+	getLeaves(leaf->right, odd, even, l + 1);
+}
+
+/* Stores the Ro Critical Points of the tree.*/
+void roPoints(node* leaf, node** roOdd, node** roEven, int* fIndex, int* sIndex, int oddLevel, int evenLevel, int l)
+{
+	if (leaf == NULL)
+		return;
+
+	roPoints(leaf->left, roOdd, roEven, fIndex, sIndex, oddLevel, evenLevel, l + 1);
+
+	if (oddLevel == l)
+	{
+		roOdd[*fIndex] = leaf; ///////////////////////////////check this if error
+		(*fIndex)++;
+		//cout << "testing if ro odd " << oddLevel << " = " << l << " pick = " << roOdd[*fIndex -1]->pick <<  endl;
+	}
+	if (evenLevel == l)
+	{
+		roEven[*sIndex] = leaf; 
+		(*sIndex)++;
+		//cout << "testing if ro even " << evenLevel << " = " << l << " pick = " << roEven[*sIndex - 1]->pick << endl;
+	}
+
+	roPoints(leaf->right, roOdd, roEven, fIndex, sIndex, oddLevel, evenLevel, l + 1);
+}
+
+/* Function that calculates the expected value of the Ro critical Points*/
+bool probability(btree* tree, int oddLevel, int evenLevel)
+{
+	///initialize variables for RoPoints
+	node** roOdd = new node*[(int)pow(2,oddLevel)];
+	node** roEven = new node*[(int)pow(2, evenLevel)];
+	int fIndex = 0;
+	int sIndex = 0;
+	roPoints(tree->root, roOdd, roEven, &fIndex, &sIndex, oddLevel, evenLevel, 0);
+	float* oddOdd = new float[fIndex]; // odd roots of odd Ro Critical Point
+	float* oddEven = new float[fIndex]; // even roots of odd Ro Critical Point
+	float* evenOdd = new float[sIndex]; // odd roots of even Ro Critical Point
+	float* evenEven = new float[sIndex]; // even roots of even Ro Critical Point
+	float expeco = 0;
+	float expece = 0;
+	for (int i = 0; i <= fIndex - 1; i++)
+	{
+		//initialize variables to zero
+		oddOdd[i] = 0;
+		oddEven[i] = 0;
+		//gather roots;
+		getLeaves(roOdd[i], &(oddOdd[i]), &(oddEven[i]), oddLevel);
+		//calculate and store probabilities
+		expeco += (oddOdd[i] / (oddOdd[i] + oddEven[i])) * (1 / (pow(2, oddLevel)));   /// 1/2^level determines the amount of importance of a level
+		//cout << "current expeco = " << expeco << endl;
+	}
+	for (int i = 0; i <= sIndex - 1; i++)
+	{
+		//initialize variables to zero
+		evenOdd[i] = 0;
+		evenEven[i] = 0;
+		//gather roots;
+		getLeaves(roEven[i], &(evenOdd[i]), &(evenEven[i]), evenLevel);
+		//calculate and store probabilities
+		expece += (evenEven[i] / (evenOdd[i] + evenEven[i])) * (1 / (pow(2, evenLevel)));   /// 1/2^level determines the amount of importance of a level
+		//cout << "current expece = " << expece << endl;
+	}
+	//free dynamic memory before moment of truth, PUN intended
+	delete[] roOdd;
+	delete[] roEven;
+	delete[] oddOdd;
+	delete[] oddEven;
+	delete[] evenEven;
+	delete[] evenOdd;
+
+	///DRUM ROLL!!!
+	if (expeco > expece)
+		return true;
+	else
+		return false;
+
+}
+
+/// just a function to delete all the dynamic variables so it saves some space.
+void freeVariables(int* xcriticalLevels, int* ycriticalLevels, int* zcriticalLevels, int* xRo, int* yRo, int* zRo)
+{
+	delete[] xcriticalLevels;
+	delete[] ycriticalLevels;
+	delete[] zcriticalLevels;
+	delete[] xRo;
+	delete[] yRo;
+	delete[] zRo;
+}
+
+//Function that declares all the necessary dynamic variables and calls the functions
+void test(btree* xTree, btree* yTree, btree* zTree)
+{
+	//Setup the variables for the three trees
+	int xHeight = nodeHeightMax(xTree->root) - 1;
+	int* xcriticalLevels = new int[(int)pow(2, (double)xHeight)];
+	bool xLineRoot = false;
+	int xIndex = 0;
+	int* xRo = new int[1];
+	int yHeight = nodeHeightMax(yTree->root) - 1;
+	int* ycriticalLevels = new int[(int)pow(2,(double)yHeight)];
+	bool yLineRoot = false;
+	int yIndex = 0;
+	int* yRo = new int[1];
+	int zHeight = nodeHeightMax(zTree->root) - 1;
+	int* zcriticalLevels = new int[(int)pow(2,(double)zHeight)];
+	bool zLineRoot = false;
+	int zIndex = 0;
+	int* zRo = new int[1];
+
+
+	theLearndAstronomer(xTree->root, xcriticalLevels, &xLineRoot, &xIndex, 0);
+	theLearndAstronomer(yTree->root, ycriticalLevels, &yLineRoot, &yIndex, 0);
+	theLearndAstronomer(zTree->root, zcriticalLevels, &zLineRoot, &zIndex, 0);
+
+	///xTree->printLevelOrder(xTree->root);
+
+	// Get the lineRoot business out the way
+	if (xLineRoot == true)
+	{
+		if (xHeight % 2 != 0) // Case with one move, first player wins
+		{
+			cout << "First\n";
+			freeVariables(xcriticalLevels, ycriticalLevels, zcriticalLevels, xRo, yRo, zRo);
+			return;
+		}
+	}
+	if (yLineRoot == true)
+	{
+		if (yHeight % 2 != 0) // Case with one move, first player wins
+		{
+			cout << "First\n";
+			freeVariables(xcriticalLevels, ycriticalLevels, zcriticalLevels, xRo, yRo, zRo);
+			return;
+		}
+	}
+	if (zLineRoot == true)
+	{
+		if (zHeight % 2 != 0) // Case with one move, first player wins
+		{
+			cout << "First\n";
+			freeVariables(xcriticalLevels, ycriticalLevels, zcriticalLevels, xRo, yRo, zRo);
+			return;
+		}
+	}
+
+	//Find the Ro critical points of each tree
+	if (xIndex > 0) // atleast one critical point
+	{
+		//find the Ro critical points
+		xRo[0] = -1;
+		xRo[1] = -1;
+		for (int i = 0; i <= xIndex - 1; i++) //because we increment index after each add
+		{
+			//cout << "looking for a place for = " << xcriticalLevels[i] << endl;
+			if (xRo[0] == -1 && xcriticalLevels[i] % 2 != 0) //initialize
+				xRo[0] = xcriticalLevels[i];
+			else if (xRo[1] == -1 && xcriticalLevels[i] % 2 == 0) //initialize evens
+				xRo[1] = xcriticalLevels[i];
+			else if (xcriticalLevels[i] % 2 != 0) //odds
+				xRo[0] = (xRo[0] <= xcriticalLevels[i]) ? xRo[0] : xcriticalLevels[i];   /// RoCriticalPoint is the highest critical level
+			else //even
+				xRo[1] = (xRo[1] <= xcriticalLevels[i]) ? xRo[1] : xcriticalLevels[i];
+		}
+
+		//cout << "odd Ro crtical point for xtree = " << xRo[0] << endl;
+		//cout << "even Ro critical point for xtree = " << xRo[1] << endl;
+
+		if (probability(xTree, xRo[0], xRo[1]) == true)
+		{
+			cout << "First\n";
+			freeVariables(xcriticalLevels, ycriticalLevels, zcriticalLevels, xRo, yRo, zRo);
+			return;
+		}
+	}
+	else
+	{
+		if (xHeight % 2 != 0)
+		{
+			//cout << "Because all nodes are of odd length! xtree" << endl;
+			cout << "First\n";
+			freeVariables(xcriticalLevels, ycriticalLevels, zcriticalLevels, xRo, yRo, zRo);
+			return;
+		}
+	}
+	if (yIndex > 0) // atleast one critical point
+	{
+		//find the Ro critical points
+		yRo[0] = -1;
+		yRo[1] = -1;
+		for (int i = 0; i <= yIndex - 1; i++) //because we increment index after each add
+		{
+			if (yRo[0] == -1 && ycriticalLevels[i] % 2 != 0) //initialize
+				yRo[0] = ycriticalLevels[i];
+			else if (yRo[1] == -1 && ycriticalLevels[i] % 2 == 0) //initialize evens
+				yRo[1] = ycriticalLevels[i];
+			else if (ycriticalLevels[i] % 2 != 0) //odds
+				yRo[0] = (yRo[0] <= ycriticalLevels[i]) ? yRo[0] : ycriticalLevels[i];   /// RoCriticalPoint is the highest critical level
+			else //even
+				yRo[1] = (yRo[1] <= ycriticalLevels[i]) ? yRo[1] : ycriticalLevels[i];
+		}
+
+		//cout << "odd Ro crtical point for ytree = " << yRo[0] << endl;
+		//cout << "even Ro critical point for ytree = " << yRo[1] << endl;
+
+		if (probability(yTree, yRo[0], yRo[1]) == true)
+		{
+			cout << "First\n";
+			freeVariables(xcriticalLevels, ycriticalLevels, zcriticalLevels, xRo, yRo, zRo);
+			return;
+		}
+	}
+	else
+	{
+		if (yHeight % 2 != 0)
+		{
+			//cout << "Because all nodes are of odd length! ytree" << endl;
+			cout << "First\n";
+			freeVariables(xcriticalLevels, ycriticalLevels, zcriticalLevels, xRo, yRo, zRo);
+			return;
+		}
+	}
+	if (zIndex > 0) // atleast one critical point
+	{
+		//find the Ro critical points
+		zRo[0] = -1;
+		zRo[1] = -1;
+		for (int i = 0; i <= zIndex - 1; i++) //because we increment index after each add
+		{
+			if (zRo[0] == -1 && zcriticalLevels[i] % 2 != 0) //initialize
+				zRo[0] = zcriticalLevels[i];
+			else if (zRo[1] == -1 && zcriticalLevels[i] % 2 == 0) //initialize evens
+				zRo[1] = zcriticalLevels[i];
+			else if (zcriticalLevels[i] % 2 != 0) //odds
+				zRo[0] = (zRo[0] <= zcriticalLevels[i]) ? zRo[0] : zcriticalLevels[i];   /// RoCriticalPoint is the highest critical level
+			else //even
+				zRo[1] = (zRo[1] <= zcriticalLevels[i]) ? zRo[1] : zcriticalLevels[i];
+		}
+
+		//cout << "odd Ro crtical point for ztree = " << zRo[0] << endl;
+		//cout << "even Ro critical point for ztree = " << zRo[1] << endl;
+
+		if (probability(zTree, zRo[0], zRo[1]) == true)
+		{
+			cout << "First\n";
+			freeVariables(xcriticalLevels, ycriticalLevels, zcriticalLevels, xRo, yRo, zRo);
+			return;
+		}
+	}
+	else
+	{
+		if (zHeight % 2 != 0)
+		{
+			//cout << "Because all nodes are of odd length! ztree" << endl;
+			cout << "First\n";
+			freeVariables(xcriticalLevels, ycriticalLevels, zcriticalLevels, xRo, yRo, zRo);
+			return;
+		}
+	}
+
+	cout << "Second\n";
+	freeVariables(xcriticalLevels, ycriticalLevels, zcriticalLevels, xRo, yRo, zRo);
+	return;
+	
+}
+
+int main() {
+	// your code goes here
+
+	string s;
+	int t;
+	getline(cin, s);
+	istringstream(s) >> t;
+
+	numbers* num = new numbers[t];
+	string x, y, z;
+	for (int i = 0; i < t; i++)
+	{
+
+		cin >> num[i].x;
+
+		cin >> num[i].y;
+
+		cin >> num[i].z;
+
+		//cout << num[i].x << num[i].y << num[i].z << "\n";
+
+	}
+	//
+	// cout << t << "\n";
+	for (int i = 0; i < t; i++)
+	{
+		// cout << num[i].x << " " << num[i].y << " " << num[i].z << "\n";
+		if (num[i].x == num[i].y && num[i].y == num[i].z)
+		{
+			cout << "Second\n";
+		}
+		else
+		{
+			btree* xTree = new btree;
+			xTree->create(num[i].x, num[i].x, num[i].y, num[i].z);
+			xTree->generate(xTree->root);
+			btree* yTree = new btree;
+			yTree->create(num[i].y, num[i].x, num[i].y, num[i].z);
+			yTree->generate(yTree->root);
+			btree* zTree = new btree;
+			zTree->create(num[i].z, num[i].x, num[i].y, num[i].z);
+			zTree->generate(zTree->root);
+			test(xTree, yTree, zTree);			
+			delete xTree;
+			delete yTree;
+			delete zTree;
+		}
+	}
+	delete[] num;
+
+
+	return 0;
+}
