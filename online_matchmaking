@@ -1,0 +1,142 @@
+// codechallenge3
+//
+/*
+Matchmaking for online game:
+Need to match players within a threshold of given elo. information such as total number of logins and logoffs and player id, elo, and status is given.
+My approach was what I would call standard. hold the players in an array(vectors are awesome) and whenever we have a new player compare with all the others
+already in the array and do the necassary computations. 
+
+*/
+#include <iostream>
+#include <sstream>
+#include <vector>
+#include <string>
+#include <math.h> 
+
+using namespace std;
+
+//globals
+int threshold;
+int numentries;
+int totalE = 0;
+int ngames = 0;
+int remaining = 0;
+
+struct player{
+	int id;
+	int elo;
+	string status;
+};
+
+// function to change the status of player to logoff. that way it isn't counted for in the logged on queue.
+// I think it would be much more effecient to remove players from the queue altogether but time is of the escense. (weak excuse, I know)
+void offMe(vector<player*> players, int id)
+{
+	for (int x = 0; x < players.size(); x++)
+	{
+		if (players[x]->id == id)
+		{
+			players[x]->status = "logoff";
+		}
+	}
+}
+
+// the one function to rule them all. This first finds if any waiting players are within the elo threshold and if so
+// we add to the maybe array. The maybe array is where we root out ties and find the lowest absolute elo difference.
+void matchMe(vector<player*> players, player* pl)
+{
+	if (players.size() > 1)
+	{
+		vector<player*> maybe;
+		vector<int> eloMaybe;
+
+		for (int y = 0; y < players.size(); y++)
+		{
+			if (players[y]->id != pl->id && players[y]->status == "logon")
+			{
+				int eloDiff = abs(players[y]->elo - pl->elo);
+				if (eloDiff <= threshold)
+				{
+					maybe.push_back(players[y]);
+					eloMaybe.push_back(eloDiff);
+				}
+			}
+		}
+
+		if (maybe.size() > 0)
+		{
+			player* min = maybe.front();
+			int addThis = eloMaybe.front();
+			for (int i = 0; i < maybe.size(); i++)
+			{
+				if (min->id != maybe[i]->id)
+				{
+				
+					if (eloMaybe[i] == addThis) //tiebreaker
+					{
+						min = (min->elo > maybe[i]->elo) ? min : maybe[i];
+						addThis = (min->elo > maybe[i]->elo) ? addThis : eloMaybe[i];
+
+					}
+					if (eloMaybe[i] < addThis) //find min absolute elo difference
+					{
+						min = maybe[i];
+						addThis = eloMaybe[i];
+					}
+				}
+			}
+			//cout << "Matched " << pl->id << " with " << min->id << " with diff of " << addThis << endl;
+			offMe(players, min->id); //these are no longer available
+			offMe(players, pl->id);
+			totalE += addThis;
+			ngames++;
+
+		}
+	}
+
+}
+
+/// this is pretty simple get inputs create the array of players and send them off to functions.
+int main() {
+
+	string s;
+	getline(cin, s);
+	istringstream iss(s);
+	iss >> threshold;
+	iss >> numentries;
+
+	vector<player*> players;
+	for (int i = numentries; i > 0; i--)
+	{
+		player* p = new player;
+		string input;
+		getline(cin, input);
+		istringstream is(input);
+		is >> p->status;
+		is >> p->id;
+		if (p->status == "logon")
+		{
+			is >> p->elo;
+			players.push_back(p);
+			matchMe(players, p);
+		}
+		else
+		{
+			offMe(players,p->id);
+		}
+	}
+	// find the remaining players
+	for (int c = 0; c < players.size(); c++)
+	{
+		if (players[c]->status == "logon")
+		{
+			// handy dandy cout to check for mistakes
+			//cout << c << " status: " << players[c]->status << " id: " << players[c]->id << " elo: " << players[c]->elo << endl;
+			remaining++;
+		}
+	}
+	cout << ngames << " " << totalE << " " << remaining;
+	return 0;
+}
+
+
