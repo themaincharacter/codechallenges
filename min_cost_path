@@ -1,0 +1,262 @@
+
+/*
+Code Challenge: Trip planning
+
+Here the goal is to find a path of least cost. The problem gives the goal and the total number of different paths of train as 
+well as the number of stops in each path and for each stop, the distance and cost of traveling it.
+
+How I set it up:
+The first thing that came to my mind was to use some implementation of dijkstra's or A* pathfinding algorithm however I quickly realized
+that would not work without major revision so again I decided to just go with the simplest approach. I created a singley linked list for 
+each path and in the nodes stored the neccasary info. However, since people are able to switch paths at to similar locations we would need
+a way to keep track of all the lists in a grid like fashion so we can locate any position in any of the lists. I decided that this looked
+like a job for arrays. So I stored each list inside of an array and just had a pointer to the array as a root, kind of like a b-tree. This
+way we no exactly where each node is located and since we also have list we know where the next useful node is in the array.
+
+	* --[0]|0 dist:0 cost:0 next:1|1: dist:1 cost:x next:3  |2: 0|3: dist:3 cost:y next: 4| .... etc
+	  --[1]|0 dist:0 cost:0 next:2|1: 0|2: dist:2 cost:c next:3|3: dist:3 cost:z next: 5|..... etc
+
+Actual algorthim to find the minimum value:
+At first I thought I just need the right hueristics formula like the one used in A* manhattan but that didn't help. I played around with a bunch
+of different methods but seeing as how this challenge is timed I decided to to just create something similar to a recursion and store all the minimum values
+of all the possible different paths in an array and then at end find the minimum value from that and then bingo.
+
+EX: given 2 10 as inputs of num paths and max dist ( and x if we are considering the revision where we limit the number of swaps but this shouldn't change the answer here)
+and the following paths:
+	  0-2-4-6-10      0-4-9-10
+cost:   3-4-5-1         5-10-1
+
+we create arrays in with linked lists like the one above and throw start the process.
+we store the next value of path x of each node in an array, x is specified in the function and is set to 0 initialy so we have 3 and 5 in the array.
+this is because the function is in a while loop as long as x != goal distance, in this case 10.
+*important note here is that we only store the value of those arrays that have said node otherwise we put a -1 as a dummy.
+than we run through all the values of the array and find the minimum cost path in this case its 3 and as for the other we start the recursion process.
+so we call the function again and for path instead of 0 put 4 and current cost as 5 and so on.
+we continue this all the while storing the sums of each functions return in an array where a global integer is used as the indexer.
+at the end we find the smallest value in the sum array and in this case its 11.
+
+*/
+
+#include <iostream>
+#include <sstream>
+#include <vector>
+#include <string>
+#include <math.h> 
+
+using namespace std;
+
+///globals
+int npaths;
+int maxdist;
+int limit;
+int sumStart = 0;
+
+//standard node to store info needed
+struct node
+{
+	int dist;
+	int id;
+	int cost;
+	node* next;
+};
+
+// this will be what we use to travel across from paths
+struct grid{
+
+	node**start;
+};
+
+//function to store the sums of each possible path possible.
+void findSum(int* summary, grid* g, int tr, int s, int lim, int ind)
+{
+	int travel = tr;
+	int sum = s;
+	node* here;
+	int* choices = new int[npaths];
+	int index = ind;
+	while (travel != maxdist)
+	{
+		for (int t = 0; t < npaths; t++)
+		{
+			here = &(g->start[t][travel]);
+			if (lim <= 0)       /// have to only consider other paths if we are within limit
+			{
+				here = &(g->start[index][travel]);
+				if (t == index)
+					choices[t] = here->next->cost;
+				else
+					choices[t] = -1;
+			}
+			
+			else if (travel != maxdist)
+			{
+				if (here->dist == travel && here->dist != maxdist && travel != maxdist)
+				{
+					choices[t] = here->next->cost;
+
+				}
+				else
+				{
+					choices[t] = -1; // a dummy number to let us know to skip this t
+				}
+			}
+			else
+				choices[t] = -1;
+		}
+
+		int curr = choices[index]; 
+		int currInd = index;  // need to remember the index so we know whether to deduct lim or not
+
+		for (int c = 0; c < npaths; c++)
+		{
+			if (curr == -1)
+			{
+				curr = choices[c];
+				index = c;
+
+			}
+			if (choices[c] != -1 && choices[c] < curr)
+			{
+				curr = choices[c];
+				index = c;
+
+			}
+			else if (choices[c] != -1 && travel != maxdist && lim > 0) // recursion-ish here
+			{
+				 
+				if (currInd != c && travel != 0)
+					findSum(summary, g, g->start[c][travel].next->dist, sum + g->start[c][travel].next->cost, lim-1, c);
+				else
+					findSum(summary, g, g->start[c][travel].next->dist, sum + g->start[c][travel].next->cost, lim, c);
+				
+				//findSum(summary, g, g->start[c][travel].next->dist, sum + g->start[c][travel].next->cost, c);//, lim, c);
+			}
+		}
+		
+		if (currInd != index && travel != 0)   ///for the next problem
+			lim--;
+		
+		if (travel != maxdist)
+			travel = g->start[index][travel].next->dist;
+		sum += g->start[index][travel].cost;
+
+	}
+
+	summary[sumStart++] = sum; /// sumStart++ so we dont override values 
+}
+
+int main() {
+	// getting inputs and creating the array/list
+
+	string s;
+	getline(cin, s);
+	istringstream isO(s);
+	isO >> npaths;
+	isO >> maxdist;
+	isO >> limit;   
+
+	grid* g = new grid;
+	g->start = new node*[npaths];
+
+	for (int i = 0; i < npaths; i++)
+	{
+		g->start[i] = new node[maxdist+1]; ///becuase segfaults
+
+		int numpaths;
+		string v;
+		getline(cin, v);
+		istringstream ist(v);
+		ist >> numpaths;
+		string path;
+		string cost;
+		getline(cin, path);
+		getline(cin, cost);
+		istringstream iss(path);
+		node* temp = g->start[i];
+
+		int x;
+		int* storeX = new int[numpaths];  /// these are where we put the values that will be connected in the list
+		for (int j = 0; j < numpaths; j++) /// in other words this are all the stops for a given path
+		{									// so we need to store them
+			iss >> x;
+			storeX[j] = x;
+		}
+
+		istringstream iss2(cost);
+		int y;
+		for (int c = 0; c < numpaths - 1; c++)
+		{
+			if (c == 0)	//// don't want anything for zero becuase thats the starting point
+			{
+				temp[0].dist = 0;
+				temp[0].cost = 0;
+				temp[0].id = i;
+				temp[0].next = &temp[storeX[1]];
+			}
+			else
+			{         ////setting up the rest.
+				iss2 >> y;
+				temp[storeX[c]].id = i;
+				temp[storeX[c]].cost = y;
+				temp[storeX[c]].dist = storeX[c];
+			}
+			////if this is not the last value do this
+			if (c + 1 < numpaths - 1)
+			{
+				temp[storeX[c]].next = &temp[storeX[c + 1]];
+				temp[storeX[c + 1]].next = NULL;
+			}
+			else
+			{
+				////else we have to be careful with the NULLs and .nexts
+				if (&temp[storeX[c + 1]] != NULL)
+				{
+					iss2 >> y;
+					temp[storeX[c]].next = &temp[storeX[c + 1]];
+					temp[storeX[c + 1]].dist = maxdist;
+					temp[storeX[c + 1]].cost = y;
+					temp[storeX[c + 1]].id = i;
+					temp[storeX[c + 1]].next = NULL;
+
+				}
+
+			}
+
+		}
+
+
+	}
+	//                                  helpful print all paths to check if i'm on the right path, bad pun intended.
+	/*for (int l = 0; l < npaths; l++)
+	{
+		node* temp = &(g->start[l][0]);
+
+		while (temp != NULL)
+		{
+			cout << temp->dist << "," << temp->cost << " ";
+
+			temp = temp->next;
+		}
+		cout << "\n";
+	}
+	*/
+	int* summary = new int[maxdist*npaths];  ///sum+array = summary
+
+	findSum(summary, g, 0, 0, limit, 0);
+
+	int thisOne = summary[1]; /// summary starts at 1
+	for (int fin = 0; fin < (maxdist*npaths); fin++)           ////find min sum here
+	{
+		if (summary[fin] != 0)
+		///	cout << "for " << fin << "we have" << summary[fin] << endl;
+		if (thisOne == 0)
+			thisOne = summary[fin];
+		if (summary[fin] != 0 && summary[fin] < thisOne)
+			thisOne = summary[fin];
+	}
+	cout << thisOne;
+	//delete summary;
+	//delete g;
+
+	return 0;
+}
